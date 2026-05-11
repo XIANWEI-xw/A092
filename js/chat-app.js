@@ -1138,20 +1138,17 @@
         var ent = entities.find(function(e) { return e.id === entId; });
         if (!ent) return;
 
+        var oldScrollHeight = area.scrollHeight;
+        var oldScrollTop = area.scrollTop;
+
         var currentLimit = cdDisplayLimit || 18;
         var startIdx = Math.max(0, allMsgs.length - currentLimit);
         var visibleMsgs = allMsgs.slice(startIdx);
 
         if (isLoadMore) {
-            /* 只在顶部插入新增的那批，不重建整个列表 */
-            var oldScrollHeight = area.scrollHeight;
-            var oldScrollTop = area.scrollTop;
-
-            /* 算出这次新增了多少条 */
             var prevStartIdx = startIdx + 18;
             var newMsgs = allMsgs.slice(startIdx, prevStartIdx);
 
-            /* 更新或插入 sentinel */
             var existSentinel = document.getElementById('cdLoadSentinel');
             if (existSentinel) existSentinel.parentNode.removeChild(existSentinel);
 
@@ -1167,14 +1164,12 @@
                 bindSentinel(loadHint);
             }
 
-            /* 在 sys-msg 之后插入新消息片段 */
             var insertAnchor = firstRef ? firstRef.nextSibling : area.firstChild;
             cdLastMsgType = null;
             cdLastMsgRow = null;
             var frag = buildMsgFragment(newMsgs, startIdx);
             area.insertBefore(frag, insertAnchor);
 
-            /* 保持视觉位置不跳动 */
             area.style.scrollBehavior = 'auto';
             area.scrollTop = oldScrollTop + (area.scrollHeight - oldScrollHeight);
             requestAnimationFrame(function() { area.style.scrollBehavior = ''; });
@@ -1183,7 +1178,8 @@
             return;
         }
 
-        /* 首次渲染：完整重建 */
+        /* 首次渲染：隐藏容器避免逐条重排 */
+        area.style.display = 'none';
         area.style.scrollBehavior = 'auto';
         area.innerHTML = '<div class="chat-mask" id="cdChatMask"></div><div class="lp-overlay" id="cdLpOverlay"></div>';
         cdLastMsgType = null;
@@ -1209,6 +1205,9 @@
         fragment.appendChild(msgFrag);
 
         area.appendChild(fragment);
+
+        /* 全部塞完再显示，一次性触发重排 */
+        area.style.display = 'flex';
         area.scrollTop = area.scrollHeight;
         area.style.scrollBehavior = '';
 
@@ -1217,7 +1216,6 @@
         var sentinel2 = document.getElementById('cdLoadSentinel');
         if (sentinel2) bindSentinel(sentinel2);
 
-        /* 绑定滚动触顶加载，只绑一次 */
         if (!area.dataset.scrollBoundLoad) {
             area.addEventListener('scroll', function() {
                 if (area.scrollTop < 80 && !isMessagesLoading && currentChatId) {

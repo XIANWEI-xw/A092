@@ -999,18 +999,15 @@
         var visible = msgs.slice(startIdx);
 
         if (isLoadMore) {
-            /* 只在顶部插入新增的那批，不重建整个列表 */
             var oldScrollHeight = container.scrollHeight;
             var oldScrollTop = container.scrollTop;
 
             var prevStartIdx = startIdx + 15;
             var newMsgs = msgs.slice(startIdx, prevStartIdx);
 
-            /* 移除旧 sentinel */
             var oldBtn = document.getElementById('lensLoadMore');
             if (oldBtn) oldBtn.parentNode.removeChild(oldBtn);
 
-            /* 插入新 sentinel */
             var insertRef = container.firstChild;
             if (startIdx > 0) {
                 var newBtn = document.createElement('div');
@@ -1022,22 +1019,25 @@
                 insertRef = newBtn.nextSibling;
             }
 
-            /* 插入新消息片段到顶部 */
             var frag = buildLensMsgFragment(newMsgs, startIdx);
             container.insertBefore(frag, insertRef);
 
-            /* 保持视觉位置不跳动 */
             container.scrollTop = oldScrollTop + (container.scrollHeight - oldScrollHeight);
 
             isLensMessagesLoading = false;
             return;
         }
 
-        /* 首次渲染：完整重建 */
+        /* 首次渲染：隐藏容器避免逐条重排 */
+        container.style.display = 'none';
+
         while (container.firstChild && container.firstChild !== typing) {
             container.removeChild(container.firstChild);
         }
-        if (!msgs.length) return;
+        if (!msgs.length) {
+            container.style.display = '';
+            return;
+        }
 
         var frag2 = document.createDocumentFragment();
 
@@ -1053,12 +1053,13 @@
         frag2.appendChild(msgFrag);
         container.insertBefore(frag2, typing);
 
+        /* 全部塞完再显示，一次性触发重排 */
+        container.style.display = '';
         scrollBot();
 
         var btn2 = document.getElementById('lensLoadMore');
         bindLensLoadMore(btn2);
 
-        /* 绑定滚动触顶，只绑一次 */
         if (!container.dataset.scrollBoundLoad) {
             container.addEventListener('scroll', function() {
                 if (container.scrollTop < 80 && !isLensMessagesLoading && curMessages && curMessages.length > 0) {
