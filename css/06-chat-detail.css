@@ -104,7 +104,7 @@
     z-index: -1;
 }
 .ca-chat-detail .msg-row.grouped { margin-bottom: 2px; }
-.ca-chat-detail .bubble { padding: 10px 15px; font-size: 11.5px; line-height: 1.5; max-width: 75%; position: relative; z-index: 2; word-wrap: break-word; overflow-wrap: break-word; }
+.ca-chat-detail .bubble { padding: 10px 15px; font-size: 13px; line-height: 1.5; max-width: 75%; position: relative; z-index: 2; word-wrap: break-word; overflow-wrap: break-word; }
 .ca-chat-detail .row-received { align-items: flex-start; animation: cd-printIn 0.3s ease-out forwards; }
 .ca-chat-detail .row-received .bubble { background: transparent; border: 1px solid var(--ink-black); color: var(--ink-black); border-radius: 18px 18px 18px 0; clip-path: polygon(0 0, 100% 0, 100% 100%, 10px 100%, 0 calc(100% - 10px)); transition: border-radius 0.3s ease; }
 .ca-chat-detail .row-sent { align-items: flex-end; animation: cd-appleSend 0.45s cubic-bezier(0.2,0.9,0.4,1.1) forwards; }

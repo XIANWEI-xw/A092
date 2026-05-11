@@ -20,28 +20,52 @@
     var baseDimOpacity = 0.45;
 
     var LensDB = {
-        _cache: {},
-
-        save: function(key, data, cb) {
-            this._cache[key] = data;
-            ChatDB.blobSet(key, data, cb);
-        },
-
-        load: function(key, cb) {
-            if (this._cache[key] !== undefined) {
-                cb(this._cache[key]);
-                return;
-            }
+        _db: null,
+        _open: function(cb) {
+            if (this._db) { cb(this._db); return; }
             var self = this;
-            ChatDB.blobGet(key, function(data) {
-                if (data !== null) self._cache[key] = data;
-                cb(data);
+            try {
+                var req = indexedDB.open('LensConvDB', 1);
+                req.onupgradeneeded = function(e) {
+                    var d = e.target.result;
+                    if (!d.objectStoreNames.contains('convs')) d.createObjectStore('convs');
+                };
+                req.onsuccess = function(e) { self._db = e.target.result; cb(self._db); };
+                req.onerror = function() { cb(null); };
+            } catch(e) { cb(null); }
+        },
+        save: function(key, data, cb) {
+            this._open(function(d) {
+                if (!d) { if (cb) cb(); return; }
+                try {
+                    var tx = d.transaction('convs', 'readwrite');
+                    tx.objectStore('convs').put(data, key);
+                    tx.oncomplete = function() { if (cb) cb(); };
+                    tx.onerror = function() { if (cb) cb(); };
+                } catch(e) { if (cb) cb(); }
             });
         },
-
+        load: function(key, cb) {
+            this._open(function(d) {
+                if (!d) { cb(null); return; }
+                try {
+                    var tx = d.transaction('convs', 'readonly');
+                    var r = tx.objectStore('convs').get(key);
+                    r.onsuccess = function() { cb(r.result || null); };
+                    r.onerror = function() { cb(null); };
+                } catch(e) { cb(null); }
+            });
+        },
         del: function(key, cb) {
-            delete this._cache[key];
-            ChatDB.blobDel(key, cb);
+            this._open(function(d) {
+                if (!d) { if (cb) cb(); return; }
+                try {
+                    var tx = d.transaction('convs', 'readwrite');
+                    tx.objectStore('convs').delete(key);
+                    tx.oncomplete = function() { if (cb) cb(); };
+                    tx.onerror = function() { if (cb) cb(); };
+                } catch(e) { if (cb) cb(); }
+            });
         }
     };
 
@@ -348,7 +372,7 @@
 
             '#lensApp .chat-scroll{flex:1;overflow-y:auto;padding:8px 0 170px;scrollbar-width:none;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;will-change:scroll-position;-webkit-transform:translateZ(0);transform:translateZ(0)}' +
             '#lensApp .chat-scroll::-webkit-scrollbar{display:none}' +
-            '#lensApp .msg-row{animation:lk-fadeIn .3s ease-out forwards;opacity:0;contain:layout style;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-transform:translateZ(0);transform:translateZ(0)}' +
+            '#lensApp .msg-row{animation:lk-fadeIn .3s ease-out forwards;opacity:0;contain:layout style;cursor:pointer;-webkit-tap-highlight-color:transparent;-webkit-transform:translateZ(0);transform:translateZ(0);will-change:transform;isolation:isolate}' +
             '@keyframes lk-fadeIn{to{opacity:1}}' +
             '@keyframes lk-msg-dissolve{' +
                 '0%{opacity:1;-webkit-transform:translateZ(0) translateY(0) scale(1);transform:translateZ(0) translateY(0) scale(1);filter:blur(0px)}' +
@@ -765,17 +789,43 @@
         document.body.appendChild(el);
     }
 
+    function loadEntitiesDirect(cb) {
+        try {
+            var req = indexedDB.open('CoutureOS_ChatDB');
+            req.onsuccess = function(e) {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains('entities')) { cb([]); return; }
+                var tx = db.transaction(['entities','avatars'], 'readonly');
+                var entReq = tx.objectStore('entities').getAll();
+                entReq.onsuccess = function(ev) {
+                    var entsLoaded = ev.target.result || [];
+                    if (!entsLoaded.length) { cb([]); return; }
+                    var avStore = tx.objectStore('avatars');
+                    var remaining = entsLoaded.length;
+                    entsLoaded.forEach(function(ent) {
+                        var avReq = avStore.get(ent.id);
+                        avReq.onsuccess = function(e2) {
+                            var av = e2.target.result;
+                            if (av && av.data) ent.avatar = av.data;
+                            if (--remaining === 0) cb(entsLoaded);
+                        };
+                        avReq.onerror = function() {
+                            if (--remaining === 0) cb(entsLoaded);
+                        };
+                    });
+                };
+                entReq.onerror = function() { cb([]); };
+            };
+            req.onerror = function() { cb([]); };
+        } catch(err) { cb([]); }
+    }
+
     function loadEntities() {
         ents = [];
-        if (typeof ChatDB !== 'undefined' && ChatDB.loadEntities) {
-            ChatDB.loadEntities(function (loaded) {
-                ents = loaded || [];
-                renderCharList();
-            });
-        } else {
-            try { ents = JSON.parse(localStorage.getItem('ca-entities') || '[]'); } catch (e) { ents = []; }
+        loadEntitiesDirect(function(loaded) {
+            ents = loaded || [];
             renderCharList();
-        }
+        });
     }
 
     function renderCharList() {
@@ -911,11 +961,14 @@
 
     var lensDisplayLimit = 15;
 
+    var isLensMessagesLoading = false;
+
     function renderConvToDOM(msgs, isLoadMore) {
         var container = document.getElementById('lensChatContainer');
         var typing = document.getElementById('lensTyping');
 
         var oldHeight = container.scrollHeight;
+        var oldScrollTop = container.scrollTop;
 
         while (container.firstChild && container.firstChild !== typing) container.removeChild(container.firstChild);
         if (!msgs.length) return;
@@ -938,7 +991,7 @@
         container.insertBefore(frag, typing);
 
         if (isLoadMore) {
-            container.scrollTop = container.scrollHeight - oldHeight;
+            container.scrollTop = container.scrollHeight - oldHeight + oldScrollTop;
         } else {
             scrollBot();
         }
@@ -950,6 +1003,28 @@
                 renderConvToDOM(curMessages, true);
             });
         }
+
+        /* 绑定滚动触顶加载（只绑一次） */
+        var chatScroll = document.getElementById('lensChatContainer');
+        if (chatScroll && !chatScroll.dataset.scrollBoundLoad) {
+            chatScroll.addEventListener('scroll', function() {
+                if (chatScroll.scrollTop < 60 && !isLensMessagesLoading && curMessages && curMessages.length > 0) {
+                    if (lensDisplayLimit < curMessages.length) {
+                        isLensMessagesLoading = true;
+                        var hint = document.getElementById('lensLoadMore');
+                        if (hint) hint.textContent = '— LOADING —';
+                        setTimeout(function() {
+                            lensDisplayLimit += 15;
+                            renderConvToDOM(curMessages, true);
+                            isLensMessagesLoading = false;
+                        }, 200);
+                    }
+                }
+            }, { passive: true });
+            chatScroll.dataset.scrollBoundLoad = 'true';
+        }
+
+        setTimeout(function() { isLensMessagesLoading = false; }, 50);
     }
 
     function enterChat(entId) {
