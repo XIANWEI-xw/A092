@@ -69,7 +69,7 @@
             '@keyframes ca-plaque-swing { 0% { transform: translateY(-8px) rotate(-3deg); opacity: 0; } 45% { transform: translateY(1.5px) rotate(1.5deg); opacity: 1; } 65% { transform: translateY(-0.5px) rotate(-0.5deg); } 85% { transform: translateY(0) rotate(0.2deg); } 100% { transform: translateY(0) rotate(0deg); opacity: 1; } }' +
             '.ca-header-hanging { transform-origin: top center; }' +
             '.ca-header-hanging.anim-swing { animation: ca-plaque-swing 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }' +
-            '.chat-area { -webkit-overflow-scrolling: touch; will-change: scroll-position; transform: translateZ(0); }' +
+            '.chat-area { -webkit-overflow-scrolling: touch; will-change: transform, scroll-position; transform: translateZ(0); contain: strict; }' +
             '.msg-row { -webkit-transform: translateZ(0); transform: translateZ(0); will-change: transform, opacity; }' +
             '.bubble { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }' +
             '@media (min-width: 431px) {' +
