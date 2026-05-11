@@ -963,68 +963,118 @@
 
     var isLensMessagesLoading = false;
 
+    function buildLensMsgFragment(msgs, startIdx) {
+        var wrap = document.createElement('div');
+        var html = '';
+        for (var i = 0; i < msgs.length; i++) {
+            html += buildMsgHTML(msgs[i], startIdx + i);
+        }
+        wrap.innerHTML = html;
+        var frag = document.createDocumentFragment();
+        while (wrap.firstChild) frag.appendChild(wrap.firstChild);
+        return frag;
+    }
+
+    function bindLensLoadMore(btn) {
+        if (!btn) return;
+        var fn = function() {
+            if (isLensMessagesLoading) return;
+            if (lensDisplayLimit < curMessages.length) {
+                isLensMessagesLoading = true;
+                btn.textContent = '— LOADING —';
+                lensDisplayLimit += 15;
+                renderConvToDOM(curMessages, true);
+            }
+        };
+        btn.onclick = fn;
+        btn.ontouchend = fn;
+    }
+
     function renderConvToDOM(msgs, isLoadMore) {
         var container = document.getElementById('lensChatContainer');
         var typing = document.getElementById('lensTyping');
-
-        var oldHeight = container.scrollHeight;
-        var oldScrollTop = container.scrollTop;
-
-        while (container.firstChild && container.firstChild !== typing) container.removeChild(container.firstChild);
-        if (!msgs.length) return;
+        if (!container) return;
 
         var startIdx = Math.max(0, msgs.length - lensDisplayLimit);
         var visible = msgs.slice(startIdx);
 
-        var html = '';
-        if (startIdx > 0) {
-            html += '<div class="lens-load-hint" style="text-align:center;padding:20px 0 10px;font-family:\'Syncopate\',sans-serif;font-size:8px;letter-spacing:3px;color:rgba(255,255,255,.25);cursor:pointer;" id="lensLoadMore">— LOAD MORE —</div>';
-        }
-        for (var i = 0; i < visible.length; i++) {
-            html += buildMsgHTML(visible[i], startIdx + i);
-        }
-
-        var wrap = document.createElement('div');
-        wrap.innerHTML = html;
-        var frag = document.createDocumentFragment();
-        while (wrap.firstChild) frag.appendChild(wrap.firstChild);
-        container.insertBefore(frag, typing);
-
         if (isLoadMore) {
-            container.scrollTop = container.scrollHeight - oldHeight + oldScrollTop;
-        } else {
-            scrollBot();
+            /* 只在顶部插入新增的那批，不重建整个列表 */
+            var oldScrollHeight = container.scrollHeight;
+            var oldScrollTop = container.scrollTop;
+
+            var prevStartIdx = startIdx + 15;
+            var newMsgs = msgs.slice(startIdx, prevStartIdx);
+
+            /* 移除旧 sentinel */
+            var oldBtn = document.getElementById('lensLoadMore');
+            if (oldBtn) oldBtn.parentNode.removeChild(oldBtn);
+
+            /* 插入新 sentinel */
+            var insertRef = container.firstChild;
+            if (startIdx > 0) {
+                var newBtn = document.createElement('div');
+                newBtn.id = 'lensLoadMore';
+                newBtn.style.cssText = 'text-align:center;padding:20px 0 10px;font-family:\'Syncopate\',sans-serif;font-size:8px;letter-spacing:3px;color:rgba(255,255,255,.25);cursor:pointer;';
+                newBtn.textContent = '— LOAD MORE —';
+                container.insertBefore(newBtn, insertRef);
+                bindLensLoadMore(newBtn);
+                insertRef = newBtn.nextSibling;
+            }
+
+            /* 插入新消息片段到顶部 */
+            var frag = buildLensMsgFragment(newMsgs, startIdx);
+            container.insertBefore(frag, insertRef);
+
+            /* 保持视觉位置不跳动 */
+            container.scrollTop = oldScrollTop + (container.scrollHeight - oldScrollHeight);
+
+            isLensMessagesLoading = false;
+            return;
         }
 
-        var loadMoreBtn = document.getElementById('lensLoadMore');
-        if (loadMoreBtn) {
-            loadMoreBtn.addEventListener('click', function() {
-                lensDisplayLimit += 15;
-                renderConvToDOM(curMessages, true);
-            });
+        /* 首次渲染：完整重建 */
+        while (container.firstChild && container.firstChild !== typing) {
+            container.removeChild(container.firstChild);
+        }
+        if (!msgs.length) return;
+
+        var frag2 = document.createDocumentFragment();
+
+        if (startIdx > 0) {
+            var loadBtn = document.createElement('div');
+            loadBtn.id = 'lensLoadMore';
+            loadBtn.style.cssText = 'text-align:center;padding:20px 0 10px;font-family:\'Syncopate\',sans-serif;font-size:8px;letter-spacing:3px;color:rgba(255,255,255,.25);cursor:pointer;';
+            loadBtn.textContent = '— LOAD MORE —';
+            frag2.appendChild(loadBtn);
         }
 
-        /* 绑定滚动触顶加载（只绑一次） */
-        var chatScroll = document.getElementById('lensChatContainer');
-        if (chatScroll && !chatScroll.dataset.scrollBoundLoad) {
-            chatScroll.addEventListener('scroll', function() {
-                if (chatScroll.scrollTop < 60 && !isLensMessagesLoading && curMessages && curMessages.length > 0) {
+        var msgFrag = buildLensMsgFragment(visible, startIdx);
+        frag2.appendChild(msgFrag);
+        container.insertBefore(frag2, typing);
+
+        scrollBot();
+
+        var btn2 = document.getElementById('lensLoadMore');
+        bindLensLoadMore(btn2);
+
+        /* 绑定滚动触顶，只绑一次 */
+        if (!container.dataset.scrollBoundLoad) {
+            container.addEventListener('scroll', function() {
+                if (container.scrollTop < 80 && !isLensMessagesLoading && curMessages && curMessages.length > 0) {
                     if (lensDisplayLimit < curMessages.length) {
                         isLensMessagesLoading = true;
                         var hint = document.getElementById('lensLoadMore');
                         if (hint) hint.textContent = '— LOADING —';
-                        setTimeout(function() {
-                            lensDisplayLimit += 15;
-                            renderConvToDOM(curMessages, true);
-                            isLensMessagesLoading = false;
-                        }, 200);
+                        lensDisplayLimit += 15;
+                        renderConvToDOM(curMessages, true);
                     }
                 }
             }, { passive: true });
-            chatScroll.dataset.scrollBoundLoad = 'true';
+            container.dataset.scrollBoundLoad = 'true';
         }
 
-        setTimeout(function() { isLensMessagesLoading = false; }, 50);
+        isLensMessagesLoading = false;
     }
 
     function enterChat(entId) {
